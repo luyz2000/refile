@@ -25,7 +25,6 @@ Features:
 - Works across form redisplays, i.e. when validations fail, even on S3
 - Effortless direct uploads, even to S3
 - Support for multiple file uploads
-- Support for single file upload
 
 Sponsored by:
 
@@ -61,10 +60,7 @@ end
 Generate a migration:
 
 ``` sh
-rails generate migration add_profile_image_to_users profile_image_id:string &&
-profile_image_filename:string && profile_image_size:string &&
-profile_image_content_type:string
-
+rails generate migration add_profile_image_to_users profile_image_id:string
 rake db:migrate
 ```
 
@@ -127,16 +123,6 @@ Refile has a global registry of backends, accessed through `Refile.backends`.
 There are two "special" backends, which are only really special in that they
 are the default backends for attachments. They are `cache` and `store`.
 
-By default files will be uploaded to `./tmp/uploads/store`. If you would like
-to persist them between deploys of your application, you can override the upload
-folder by adding an initializer like this:
-
-```ruby
-# config/initializers/refile.rb
-
-Refile.backends['store'] = Refile::Backend::FileSystem.new('/etc/projectname-uploads/')
-```
-
 The cache is intended to be transient. Files are added here before they are
 meant to be permanently stored. Usually files are then moved to the store for
 permanent storage, but this isn't always the case.
@@ -189,7 +175,6 @@ are provided by other gems.
   different cloud storage providers, including Google Storage and Rackspace
   CloudFiles.
 - [Postgresql](https://github.com/krists/refile-postgres)
-- [Gridfs](https://github.com/Titinux/refile-gridfs)
 - [In Memory](https://github.com/refile/refile-memory)
 
 ### Uploadable
@@ -198,7 +183,7 @@ The `upload` method on backends can be called with a variety of objects. It
 requires that the object passed to it behaves similarly to Ruby IO objects, in
 particular it must implement the methods `size`, `read(length = nil, buffer =
 nil)`, `eof?`, `rewind`, and `close`. All of `File`, `Tempfile`,
-`ActionDispatch::UploadedFile` and `StringIO` implement this interface, however
+`ActionDispath::UploadedFile` and `StringIO` implement this interface, however
 `String` does not. If you want to upload a file from a `String` you must wrap
 it in a `StringIO` first.
 
@@ -262,19 +247,6 @@ class User
 end
 ```
 
-### Keeping uploaded files
-
-By default Refile will delete a stored file when its model is destroyed. You can change this behaviour by passing in the `destroy` option.
-
-```ruby
-class User < ActiveRecord::Base
-  attachment :profile_image, destroy: false
-end
-
-```
-
-Now Refile will not delete the `profile_image` file from the store if the user is destroyed.
-
 ## 3. Rack Application
 
 Refile includes a Rack application (an endpoint, not a middleware), written in
@@ -292,10 +264,10 @@ explains how to set this up (bonus: faster static assets!). Once you've set this
 up, simply configure Refile to use your CDN:
 
 ``` ruby
-Refile.cdn_host = "https://your-dist-url.cloudfront.net"
+Refile.cdn_host = "//your-dist-url.cloudfront.net"
 ```
 
-Using [the HTTPS protocol](https://www.eff.org/encrypt-the-web-report) for `Refile.cdn_host` is recommended. There aren't [any performance concerns](https://istlsfastyet.com/), and it is always safe to request HTTPS assets.
+Using a [protocol-relative URL](http://www.paulirish.com/2010/the-protocol-relative-url/) for `Refile.host` is recommended.
 
 ### Mounting
 
@@ -303,32 +275,8 @@ If you are using Rails and have required [refile/rails.rb](lib/refile/rails.rb),
 then the Rack application is mounted for you at `/attachments`. You should be able
 to see this when you run `rake routes`.
 
-You can configure Refile to use a different `mount_point` than `/attachments`:
-
-``` ruby
-Refile.mount_point = "/your-preferred-mount-point"
-```
-
 You could also run the application on its own, it doesn't need to be mounted to
 work.
-
-If you are using a catch-all route (such as required by Comfy CMS), you will need to turn off Automounting and add the refile route before your catch all route.
-
-(in initializers/refile.rb)
-``` ruby
-Refile.automount = false
-```
-
-in routes.rb
-``` ruby
-  mount Refile.app, at: Refile.mount_point, as: :refile_app
-
-  # Make sure this routeset is defined last
-  comfy_route :cms, :path => '/', :sitemap => true
-
-```
-
-
 
 ### Retrieving files
 
@@ -346,11 +294,6 @@ default this to the name of the column.
 The `:token` is a generated digest of the request path when the
 `Refile.secret_key` is configured; otherwise, the application will raise an error.
 The digest feature provides a security measure against unverified requests.
-
-**NOTICE:** If you don't set the `Refile.secret_key` we will use rails `secret_key_base`
-to generate the token. We suggest you not to change the `secret_key_base` after you
-generated and hardcoded some attachment URLs in your application (e.g. blog post images),
-because the token will change and you'll not be able to retrieve in this case, the images.
 
 ### Processing
 
@@ -427,29 +370,6 @@ There's also a helper for generating image tags:
 <%= attachment_image_tag(@user, :profile_image, :fill, 300, 300) %>
 ```
 
-You can also provide a limit to the image:
-
-``` erb
-<%= link_to "Image", attachment_url(@user, :profile_image, :limit, 400, 500) %>
-```
-
-If you don't care about the aspect ratio and want an exact dimension, you can use `!`:
-
-``` erb
-<%= link_to "Image", attachment_url(@user, :profile_image, :limit, 400, "1000!") %>
-```
-
-Keep in mind that it's also important to remember you can not stretch the image, even you set
-a larger width or height the image will keep its default dimensions. For example: if you set
-`400x1000!` for an image `600x800` it'll keep its height of `400x800`.
-
-If you just care about limit only one dimension, you can use `nil` in widht or height:
-
-``` erb
-<%= link_to "Image", attachment_url(@user, :profile_image, :limit, 400, nil) %>
-<%= link_to "Image", attachment_url(@user, :profile_image, :limit, nil, 400) %>
-```
-
 With this helper you can specify an image/asset which is used as a fallback in case
 no file has been uploaded:
 
@@ -457,14 +377,6 @@ no file has been uploaded:
 <%= attachment_url(@user, :profile_image, :fill, 300, 300, fallback: "default.png") %>
 <%= attachment_image_tag(@user, :profile_image, :fill, 300, 300, fallback: "default.png") %>
 ```
-
-You can also set the URL to force the download of the uploaded file:
-
-``` erb
-<%= link_to "Download", attachment_url(@user, :profile_image, force_download: true) %>
-```
-
-Use `Refile.attachment_url` if you already have `attachment` in your routes.
 
 ## 5. JavaScript library
 
@@ -600,36 +512,6 @@ production mode.
 Refile's JavaScript library requires HTML5 features which are unavailable on
 IE9 and earlier versions. All other major browsers are supported.
 
-## Authentication
-
-URLs generated by Refile are cryptographically signed. This ensures that a file
-cannot be downloaded unless you hand someone the URL to that file. This is
-essentially equivalent to token base authentication.
-
-Unfortunately a similar system is not in place for file uploads, meaning that
-direct file uploads are open to anyone. By default only the `cache` backend can
-be uploaded to, and you are encouraged to purge unused files from this backend
-periodically. This might seem insecure, but consider the fact that anyone who
-can access file uploads in your application will be able to upload files into
-it anyway.
-
-Nevertheless, you can disable direct file uploads by setting:
-
-```
-Refile.allow_uploads_to = []
-```
-
-You also have the option of explicitly authenticating anyone who tries to
-access the Refile application. Since the Refile application is a Sinatra
-application, you can use Sinatra's before hooks to set up authentication like
-this:
-
-```
-Refile::App.before do
-  halt 403 unless User.find_by(id: session[:user_id])
-end
-```
-
 ## Additional metadata
 
 In the quick start example above, we chose to only store the file id, but often
@@ -720,7 +602,7 @@ twice, once for each file.
 
 When you upload multiple files, your application will receive an array of
 files, instead of a single file. To map these files to model object, Refile's
-ActiveRecord integration ships with a nice macro that makes this trivial. Suppose
+ActiveRecord integration ships with a nice macro makes this trivial. Suppose
 you have an image model like this:
 
 ``` ruby
@@ -738,7 +620,7 @@ From the post model, you can use the `accepts_attachments_for` macro:
 
 ``` ruby
 class Post < ActiveRecord::Base
-  has_many :images, dependent: :destroy, autosave: true
+  has_many :images, dependent: :destroy
   accepts_attachments_for :images, attachment: :file
 end
 ```
@@ -748,12 +630,10 @@ this case.
 
 ``` ruby
 class Post < ActiveRecord::Base
-  has_many :images, dependent: :destroy, autosave: true
+  has_many :images, dependent: :destroy
   accepts_attachments_for :images
 end
 ```
-
-Note: Leaving out the `autosave` option will only save the attachments when the post is created.
 
 You can add the attachment field to your post form:
 
@@ -784,125 +664,6 @@ so that older attachments are kept. To enable this, set the `append` option to
 class Post < ActiveRecord::Base
   has_many :images, dependent: :destroy
   accepts_attachments_for :images, append: true
-end
-```
-### Multiple file uploads for pure Ruby classes
-
-You can also use `accepts_attachments_for` macro in pure Ruby classes.
-
-Suppose you have a `Document` class to be associated with a `Post` class.
-A post has many documents, and each document has a file.
-First, you will need to use the `attachment` macro in the `Document` class to
-declare your `:file` attachment, and also implement a constructor to receive
-the attachment:
-
-```ruby
-class Document
-  extend Refile::Attachment
-  attr_accessor :file_id
-
-  attachment :file
-
-  def initialize(attributes = {})
-    self.file = attributes[:file]
-  end
-end
-```
-
-In the `Post` class, you will need a constructor to initialize the `@documents`
-variable and an `attr_accessor :documents`. Then you can use the `accepts_attachments_for`
-macro for declaring the `:documents` collection:
-
-```ruby
-class Post
-  extend Refile::Attachment
-  include ActiveModel::Model
-
-  attr_accessor :documents
-
-  accepts_attachments_for(
-    :documents,
-    accessor_prefix: 'documents_files',
-    collection_class: Document
-  )
-
-  def initialize(attributes = {})
-    @documents = attributes[:documents] || []
-  end
-end
-```
-
-In this example, we specified the following options:
-
-- `collection_class` is the attachments class, `Document`
-- `accessor_prefix` gives a prefix to the generated accessors, `documents_files`.
-
-Now you can append attachments with your HTML form in the following way:
-
-```erb
-<%= form_for @post do |form| %>
-  <%= form.label :documents_files %>
-  <%= form.attachment_field :documents_files, multiple: true %>
-<% end %>
-```
-
-The default values for the `accepts_attachments_for` macro are
-`{ attachment: :file, append: false }`. Everything else should be similar to
-the Active Record version of this macro.
-
-## Single file upload
-
-File input fields support single file upload, allows users to attach
-one file at the time instead of the common multiple files feature.
-Let's suppose you have an image model like this:
-
-``` ruby
-class Image < ActiveRecord::Base
-  belongs_to :post
-  attachment :file
-end
-```
-
-Note it must be possible to persist images given only the associated post and a
-file. There must not be any other validations or constraints which prevent
-images from being saved.
-
-From the post model, you can use the `accepts_attachments_for` macro:
-
-``` ruby
-class Post < ActiveRecord::Base
-  has_many :images, dependent: :destroy
-  accepts_attachments_for :images, attachment: :file
-end
-```
-
-The `attachment` option defaults to `:file`, so we could have left it out in
-this case.
-
-``` ruby
-class Post < ActiveRecord::Base
-  has_many :images, dependent: :destroy
-  accepts_attachments_for :images
-end
-```
-
-You can add the attachment field to your post form without using the `multiple`
-attribute:
-
-``` erb
-<%= form_for @post do |form| %>
-  <%= form.label :images_files %>
-  <%= form.attachment_field :images_files %>
-<% end %>
-```
-
-Now you only need to permit the generated accessor in your controller.  Since
-`images_files` is not an array, you need to tell Rails to only allow the
-attribute symbol:
-
-``` ruby
-def post_params
-  params.require(:post).permit(:images_files)
 end
 ```
 
@@ -987,41 +748,6 @@ needs:
 - For "Action on Objects" you'll probably want to choose "Permanently Delete Only"
 - Choose whatever number of days you're comfortable with, I chose "1"
 - Click "Review" and finally "Create and activate Rule"
-
-## Testing
-
-When testing your own classes that use Refile, you can use `Refile::FileDouble` objects instead of real files.
-
-```ruby
-# app/models/post.rb
-class Post < ActiveRecord::Base
-  attachment :image, type: :image
-end
-
-# spec/models/post_spec.rb
-require "rails_helper"
-require "refile/file_double"
-
-RSpec.describe Post, type: :model do
-  it "allows attaching an image" do
-    post = Post.new
-
-    post.image = Refile::FileDouble.new("dummy", "logo.png", content_type: "image/png")
-    post.save
-
-    expect(post.image_id).not_to be_nil
-  end
-
-  it "doesn't allow attaching other files" do
-    post = Post.new
-
-    post.image = Refile::FileDouble.new("dummy", "file.txt", content_type: "text/plain")
-    post.save
-
-    expect(post.image_id).to be_nil
-  end
-end
-```
 
 ## simple_form
 

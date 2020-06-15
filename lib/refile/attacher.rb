@@ -63,9 +63,7 @@ module Refile
     end
 
     def get
-      if remove?
-        nil
-      elsif cache_id
+      if cache_id
         cache.get(cache_id)
       elsif id
         store.get(id)
@@ -73,11 +71,10 @@ module Refile
     end
 
     def set(value)
-      self.remove = false
-      case value
-        when nil then self.remove = true
-        when String, Hash then retrieve!(value)
-        else cache!(value)
+      if value.is_a?(String) or value.is_a?(Hash)
+        retrieve!(value)
+      else
+        cache!(value)
       end
     end
 
@@ -106,20 +103,21 @@ module Refile
 
     def download(url)
       unless url.to_s.empty?
-        download = Refile::Download.new(url)
+        response = RestClient::Request.new(method: :get, url: url, raw_response: true).execute
         @metadata = {
-          size: download.size,
-          filename: download.original_filename,
-          content_type: download.content_type
+          size: response.file.size,
+          filename: URI.parse(url).path.split("/").last,
+          content_type: response.headers[:content_type]
         }
         if valid?
-          @metadata[:id] = cache.upload(download.io).id
+          response.file.open if response.file.closed? # https://github.com/refile/refile/pull/210
+          @metadata[:id] = cache.upload(response.file).id
           write_metadata
         elsif @definition.raise_errors?
           raise Refile::Invalid, @errors.join(", ")
         end
       end
-    rescue Refile::Error
+    rescue RestClient::Exception
       @errors = [:download_failed]
       raise if @definition.raise_errors?
     end
@@ -128,13 +126,12 @@ module Refile
       if remove?
         delete!
         write(:id, nil, true)
-        remove_metadata
       elsif cache_id
         file = store.upload(get)
         delete!
         write(:id, file.id, true)
-        write_metadata
       end
+      write_metadata
       @metadata = {}
     end
 
@@ -179,12 +176,6 @@ module Refile
       write(:size, size)
       write(:content_type, content_type)
       write(:filename, filename)
-    end
-
-    def remove_metadata
-      write(:size, nil)
-      write(:content_type, nil)
-      write(:filename, nil)
     end
   end
 end

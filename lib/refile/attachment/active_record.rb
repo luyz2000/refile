@@ -5,11 +5,10 @@ module Refile
 
       # Attachment method which hooks into ActiveRecord models
       #
-      # @param [true, false] destroy  Whether to remove the stored file if its model is destroyed
       # @return [void]
       # @see Refile::Attachment#attachment
-      def attachment(name, raise_errors: false, destroy: true, **options)
-        super(name, raise_errors: raise_errors, **options)
+      def attachment(name, raise_errors: false, **options)
+        super
 
         attacher = "#{name}_attacher"
 
@@ -18,13 +17,13 @@ module Refile
             send(attacher).valid?
             errors = send(attacher).errors
             errors.each do |error|
-              self.errors.add(name, *error)
+              self.errors.add(name, error)
             end
           end
         end
 
         define_method "#{name}=" do |value|
-          send("#{name}_id_will_change!") if respond_to?("#{name}_id_will_change!")
+          send("#{name}_id_will_change!")
           super(value)
         end
 
@@ -43,13 +42,12 @@ module Refile
         end
 
         after_destroy do
-          send(attacher).delete! if destroy
+          send(attacher).delete!
         end
       end
 
-      # Macro which generates accessors in Active Record classes for assigning
-      # multiple attachments at once. This is primarily useful together with
-      # multiple file uploads. There is also a pure Ruby version of this macro.
+      # Macro which generates accessors for assigning multiple attachments at
+      # once. This is primarily useful together with multiple file uploads.
       #
       # The name of the generated accessors will be the name of the association
       # and the name of the attachment in the associated model. So if a `Post`
@@ -64,7 +62,7 @@ module Refile
       #
       # @example in associated model
       #   class Image
-      #     attachment :file
+      #     attachment :image
       #   end
       #
       # @example in form
@@ -72,29 +70,46 @@ module Refile
       #     <%= form.attachment_field :images_files, multiple: true %>
       #   <% end %>
       #
-      # @param [Symbol]  association_name     Name of the association
-      # @param [Symbol]  attachment           Name of the attachment in the associated model
-      # @param [Boolean] append               If true, new files are appended instead of replacing the entire list of associated models.
+      # @param [Symbol] association_name     Name of the association
+      # @param [Symbol] attachment           Name of the attachment in the associated model
+      # @param [Symbol] append               If true, new files are appended instead of replacing the entire list of associated models.
       # @return [void]
       def accepts_attachments_for(association_name, attachment: :file, append: false)
         association = reflect_on_association(association_name)
-        attachment_pluralized = attachment.to_s.pluralize
-        name = "#{association_name}_#{attachment_pluralized}"
-        collection_class = association && association.klass
+        name = "#{association_name}_#{attachment.to_s.pluralize}"
 
-        options = {
-          collection_class: collection_class,
-          name: name,
-          attachment: attachment,
-          append: append
-        }
+        mod = Module.new do
+          define_method :"#{name}_attachment_definition" do
+            association.klass.send("#{attachment}_attachment_definition")
+          end
 
-        mod = MultipleAttachments.new association_name, **options do
-          define_method(:method_missing) do |method, *args|
-            if method == attachment_pluralized.to_sym
-              raise NoMethodError, "wrong association name #{method}, use like this #{name}"
+          define_method :"#{name}_data" do
+            if send(association_name).all? { |record| record.send("#{attachment}_attacher").valid? }
+              send(association_name).map(&:"#{attachment}_data").select(&:present?)
+            end
+          end
+
+          define_method :"#{name}" do
+            send(association_name).map(&attachment)
+          end
+
+          define_method :"#{name}=" do |files|
+            cache, files = files.partition { |file| file.is_a?(String) }
+
+            cache = Refile.parse_json(cache.first)
+
+            if not append and (files.present? or cache.present?)
+              send("#{association_name}=", [])
+            end
+
+            if files.empty? and cache.present?
+              cache.select(&:present?).each do |file|
+                send(association_name).build(attachment => file.to_json)
+              end
             else
-              super(method, *args)
+              files.select(&:present?).each do |file|
+                send(association_name).build(attachment => file)
+              end
             end
           end
         end

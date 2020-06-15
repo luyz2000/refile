@@ -1,6 +1,3 @@
-require "refile/active_record_helper"
-require_relative "support/accepts_attachments_for_shared_examples"
-
 describe Refile::Attachment do
   let(:options) { {} }
   let(:klass) do
@@ -73,17 +70,6 @@ describe Refile::Attachment do
       expect(instance.document).to be_nil
       expect(instance.document_size).to be_nil
     end
-
-    it "accepts nil" do
-      instance.document = nil
-      expect(instance.document).to be_nil
-    end
-
-    it "removes a document when assigned nil" do
-      instance.document = Refile::FileDouble.new("hello", "foo.txt", content_type: "text/plain")
-      instance.document = nil
-      expect(instance.document).to be_nil
-    end
   end
 
   describe ":name" do
@@ -113,28 +99,6 @@ describe Refile::Attachment do
       instance.document_id = file.id
 
       expect(instance.document_url("fill", 800, 800)).to eq("http://localhost:56120/attachments/token/store/fill/800/800/#{file.id}/document")
-    end
-  end
-
-  describe "presigned_:name_url=" do
-    it "generates presigned URL" do
-      file = Refile.store.upload(Refile::FileDouble.new("hello"))
-      instance.document_id = file.id
-
-      allow(Refile.store).to receive_message_chain(:object, :presigned_url).with(file.id).with(:get, expires_in: 900).and_return("PRESIGNED_URL")
-      expect(instance.presigned_document_url).to eq("PRESIGNED_URL")
-    end
-
-    it "generates presigned URL with custom expiration" do
-      file = Refile.store.upload(Refile::FileDouble.new("hello"))
-      instance.document_id = file.id
-
-      allow(Refile.store).to receive_message_chain(:object, :presigned_url).with(file.id).with(:get, expires_in: 901).and_return("PRESIGNED_URL")
-      expect(instance.presigned_document_url(901)).to eq("PRESIGNED_URL")
-    end
-
-    it "does nothing when id is nill" do
-      expect(instance.presigned_document_url).to be_nil
     end
   end
 
@@ -192,7 +156,7 @@ describe Refile::Attachment do
         it "handles redirect loops by trowing errors" do
           expect do
             instance.remote_document_url = "http://www.example.com/loop"
-          end.to raise_error(Refile::TooManyRedirects)
+          end.to raise_error(RestClient::MaxRedirectsReached)
         end
       end
 
@@ -271,23 +235,8 @@ describe Refile::Attachment do
       instance.document_attacher.store!
 
       expect(instance.document_id).to be_nil
-      expect(Refile.store.exists?(file.id)).to be_falsy
-    end
-
-    it "removes metadata when remove? returns true" do
-      file = Refile.store.upload(Refile::FileDouble.new("hello"))
-      instance.document_id = file.id
-      instance.document_size = file.size
-      instance.document_filename = "foo"
-      instance.document_content_type = "bar"
-
-      instance.document_attacher.remove = true
-      instance.document_attacher.store!
-
-      expect(instance.document_id).to be_nil
       expect(instance.document_size).to be_nil
-      expect(instance.document_filename).to be_nil
-      expect(instance.document_content_type).to be_nil
+      expect(Refile.store.exists?(file.id)).to be_falsy
     end
   end
 
@@ -346,7 +295,7 @@ describe Refile::Attachment do
       expect(instance.document_attacher.valid?).to be_falsy
     end
 
-    it "returns true if valid file is attached" do
+    it "returns false and if valid file is attached" do
       file = Refile::FileDouble.new("hello", content_type: "image/png")
 
       instance.document = file
@@ -360,15 +309,7 @@ describe Refile::Attachment do
       instance.document = file
 
       expect(instance.document_attacher.valid?).to be_falsy
-      expect(instance.document_attacher.errors).to match_array [[:invalid_content_type, anything]]
-    end
-
-    it "returns false and sets errors if file with zero byte is uploaded" do
-      file = Refile::FileDouble.new("", "hello", content_type: "image/png")
-      instance.document = file
-
-      expect(instance.document_attacher.valid?).to be_falsy
-      expect(instance.document_attacher.errors).to eq([:zero_byte_detected])
+      expect(instance.document_attacher.errors).to eq([:invalid_content_type])
     end
   end
 
@@ -514,7 +455,7 @@ describe Refile::Attachment do
       file = Refile::FileDouble.new("hello", "hello.php")
       instance.document = file
 
-      expect(instance.document_attacher.errors).to match_array [[:invalid_extension, anything]]
+      expect(instance.document_attacher.errors).to eq([:invalid_extension])
       expect(instance.document).to be_nil
     end
 
@@ -522,7 +463,7 @@ describe Refile::Attachment do
       file = Refile::FileDouble.new("hello")
       instance.document = file
 
-      expect(instance.document_attacher.errors).to match_array [[:invalid_extension, anything]]
+      expect(instance.document_attacher.errors).to eq([:invalid_extension])
       expect(instance.document).to be_nil
     end
   end
@@ -542,7 +483,7 @@ describe Refile::Attachment do
       file = Refile::FileDouble.new("hello", content_type: "application/php")
       instance.document = file
 
-      expect(instance.document_attacher.errors).to match_array [[:invalid_content_type, anything]]
+      expect(instance.document_attacher.errors).to eq([:invalid_content_type])
       expect(instance.document).to be_nil
     end
 
@@ -550,7 +491,7 @@ describe Refile::Attachment do
       file = Refile::FileDouble.new("hello")
       instance.document = file
 
-      expect(instance.document_attacher.errors).to match_array [[:invalid_content_type, anything]]
+      expect(instance.document_attacher.errors).to eq([:invalid_content_type])
       expect(instance.document).to be_nil
     end
   end
@@ -570,7 +511,7 @@ describe Refile::Attachment do
       file = Refile::FileDouble.new("hello", content_type: "application/php")
       instance.document = file
 
-      expect(instance.document_attacher.errors).to match_array [[:invalid_content_type, anything]]
+      expect(instance.document_attacher.errors).to eq([:invalid_content_type])
       expect(instance.document).to be_nil
     end
 
@@ -578,7 +519,7 @@ describe Refile::Attachment do
       file = Refile::FileDouble.new("hello")
       instance.document = file
 
-      expect(instance.document_attacher.errors).to match_array [[:invalid_content_type, anything]]
+      expect(instance.document_attacher.errors).to eq([:invalid_content_type])
       expect(instance.document).to be_nil
     end
   end
@@ -588,56 +529,5 @@ describe Refile::Attachment do
       .to output(/Refile::Attachment\(document\)/).to_stdout
     expect { p klass.ancestors }
       .to output(/Refile::Attachment\(document\)/).to_stdout
-  end
-
-  describe ".accepts_nested_attributes_for" do
-    it_should_behave_like "accepts_attachments_for" do
-      let(:options) { {} }
-
-      # This class is a PORO, but it's implementing an interface that's similar
-      # to ActiveRecord's in order to simplify specs via shared examples.
-      let(:post_class) do
-        opts = options
-        foo = document_class
-
-        Class.new do
-          extend Refile::Attachment
-
-          attr_accessor :documents
-
-          accepts_attachments_for(
-            :documents,
-            accessor_prefix: "documents_files",
-            collection_class: foo,
-            **opts
-          )
-
-          def initialize(attributes)
-            @documents = attributes[:documents]
-          end
-
-          def save!; end
-
-          def update_attributes!(attributes)
-            attributes.each { |k, v| public_send("#{k}=", v) }
-          end
-        end
-      end
-
-      let(:document_class) do
-        Class.new do
-          extend Refile::Attachment
-          attr_accessor :file_id
-
-          attachment :file, type: :image, extension: %w[jpeg], raise_errors: false
-
-          def initialize(attributes = {})
-            self.file = attributes[:file]
-          end
-        end
-      end
-
-      let(:post) { post_class.new(documents: []) }
-    end
   end
 end

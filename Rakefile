@@ -16,7 +16,6 @@ RSpec::Core::RakeTask.new(:spec)
 
 RuboCop::RakeTask.new
 
-Rails.application.load_tasks
-
-Rake::Task[:default].clear if Rake::Task.task_defined?(:default)
 task default: [:spec, :rubocop]
+
+Rails.application.load_tasks

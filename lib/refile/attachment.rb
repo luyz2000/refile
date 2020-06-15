@@ -18,7 +18,6 @@ module Refile
     # - `remote_image_url`
     # - `remote_image_url=`
     # - `image_url`
-    # - `image_presigned_url`
     #
     # @example
     #   class User
@@ -89,11 +88,6 @@ module Refile
           Refile.attachment_url(self, name, *args)
         end
 
-        define_method "presigned_#{name}_url" do |expires_in = 900|
-          attachment = send(attacher)
-          attachment.store.object(attachment.id).presigned_url(:get, expires_in: expires_in) unless attachment.id.nil?
-        end
-
         define_method "#{name}_data" do
           send(attacher).data
         end
@@ -103,64 +97,6 @@ module Refile
       end
 
       include mod
-    end
-
-    # Macro which generates accessors in pure Ruby classes for assigning
-    # multiple attachments at once. This is primarily useful together with
-    # multiple file uploads. There is also an Active Record version of
-    # this macro.
-    #
-    # The name of the generated accessors will be the name of the association
-    # (represented by an attribute accessor) and the name of the attachment in
-    # the associated class. So if a `Post` accepts attachments for `images`, and
-    # the attachment in the `Image` class is named `file`, then the accessors will
-    # be named `images_files`.
-    #
-    # @example in associated class
-    #   class Document
-    #     extend Refile::Attachment
-    #     attr_accessor :file_id
-    #
-    #     attachment :file
-    #
-    #     def initialize(attributes = {})
-    #       self.file = attributes[:file]
-    #     end
-    #   end
-    #
-    # @example in class
-    #   class Post
-    #     extend Refile::Attachment
-    #     include ActiveModel::Model
-    #
-    #     attr_accessor :documents
-    #
-    #     accepts_attachments_for :documents, accessor_prefix: 'documents_files', collection_class: Document
-    #
-    #     def initialize(attributes = {})
-    #       @documents = attributes[:documents] || []
-    #     end
-    #   end
-    #
-    # @example in form
-    #   <%= form_for @post do |form| %>
-    #     <%= form.attachment_field :documents_files, multiple: true %>
-    #   <% end %>
-    #
-    # @param [Symbol]  collection_name      Name of the association
-    # @param [Class]   collection_class     Associated class
-    # @param [String]  accessor_prefix      Name of the generated accessors
-    # @param [Symbol]  attachment           Name of the attachment in the associated class
-    # @param [Boolean] append               If true, new files are appended instead of replacing the entire list of associated classes.
-    # @return [void]
-    def accepts_attachments_for(collection_name, collection_class:, accessor_prefix:, attachment: :file, append: false)
-      include MultipleAttachments.new(
-        collection_name,
-        collection_class: collection_class,
-        name: accessor_prefix,
-        attachment: attachment,
-        append: append
-      )
     end
   end
 end

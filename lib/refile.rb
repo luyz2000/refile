@@ -1,15 +1,13 @@
 require "uri"
 require "fileutils"
 require "tempfile"
+require "rest_client"
 require "logger"
 require "mime/types"
 
 module Refile
   # @api private
-  class Error < StandardError; end
-
-  # @api private
-  class Invalid < Error; end
+  class Invalid < StandardError; end
 
   # @api private
   class InvalidID < Invalid; end
@@ -19,12 +17,6 @@ module Refile
 
   # @api private
   class InvalidFile < Invalid; end
-
-  # Raised when the given URL couldn't be parsed.
-  class InvalidUrl < Error; end
-
-  # Raised when the given URL redirects more than allowed.
-  class TooManyRedirects < Error; end
 
   # @api private
   class Confirm < StandardError
@@ -273,10 +265,10 @@ module Refile
     # {Refile.mount_point}.
     #
     # @example
-    #   Refile.app_url
+    #   Refilee.app_url
     #
     # @example With host and prefix
-    #   Refile.app_url(host: "http://some.domain", prefix: "/refile")
+    #   Refilee.app_url(host: "http://some.domain", prefix: "/refile")
     #
     # @param [String, nil] host            Override the host
     # @param [String, nil] prefix          Adds a prefix to the URL if the application is not mounted at root
@@ -313,24 +305,17 @@ module Refile
     # @param [String, nil] format          A file extension to be appended to the URL
     # @param [String, nil] host            Override the host
     # @param [String, nil] prefix          Adds a prefix to the URL if the application is not mounted at root
-    # @param [String, nil] expires_at      Adds a sulfix to the URL that sets the expiration time of the URL
-    # @param [String, nil] force_download  Adds a sulfix to the URL to force the download of the file when URL is accessed
     # @return [String, nil]                The generated URL
-    def file_url(file, *args, expires_at: nil, host: nil, prefix: nil, filename:, format: nil, force_download: nil)
+    def file_url(file, *args, host: nil, prefix: nil, filename:, format: nil)
       return unless file
 
       host ||= Refile.cdn_host
       backend_name = Refile.backends.key(file.backend)
 
       filename = Rack::Utils.escape(filename)
-      filename << "." << format.to_s if format && !filename.downcase.end_with?(format.to_s.downcase)
+      filename << "." << format.to_s if format
 
       base_path = ::File.join("", backend_name, *args.map(&:to_s), file.id.to_s, filename)
-      if expires_at
-        base_path += "?expires_at=#{expires_at.to_i}" # UNIX timestamp
-      end
-
-      base_path += "?force_download=true" if force_download
 
       ::File.join(app_url(prefix: prefix, host: host), token(base_path), base_path)
     end
@@ -394,10 +379,8 @@ module Refile
     # @param [String, nil] format          A file extension to be appended to the URL
     # @param [String, nil] host            Override the host
     # @param [String, nil] prefix          Adds a prefix to the URL if the application is not mounted at root
-    # @param [String, nil] expires_at      Adds a sulfix to the URL that sets the expiration time of the URL
-    # @param [String, nil] force_download  Adds a sulfix to the URL to force the download of the file when URL is accessed
     # @return [String, nil]                The generated URL
-    def attachment_url(object, name, *args, expires_at: nil, host: nil, prefix: nil, filename: nil, format: nil, force_download: nil)
+    def attachment_url(object, name, *args, host: nil, prefix: nil, filename: nil, format: nil)
       attacher = object.send(:"#{name}_attacher")
       file = attacher.get
       return unless file
@@ -405,7 +388,7 @@ module Refile
       filename ||= attacher.basename || name.to_s
       format ||= attacher.extension
 
-      file_url(file, *args, expires_at: expires_at, host: host, prefix: prefix, filename: filename, format: format, force_download: force_download)
+      file_url(file, *args, host: host, prefix: prefix, filename: filename, format: format)
     end
 
     # Receives an instance of a class which has used the
@@ -497,10 +480,8 @@ module Refile
   require "refile/type"
   require "refile/backend_macros"
   require "refile/attachment_definition"
-  require "refile/download"
   require "refile/attacher"
   require "refile/attachment"
-  require "refile/attachment/multiple_attachments"
   require "refile/random_hasher"
   require "refile/file"
   require "refile/custom_logger"

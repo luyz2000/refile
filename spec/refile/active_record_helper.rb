@@ -8,7 +8,7 @@ ActiveRecord::Base.establish_connection(
   verbosity: "quiet"
 )
 
-class TestMigration < ActiveRecord::Migration[5.0]
+class TestMigration < ActiveRecord::Migration
   def self.up
     create_table :posts, force: true do |t|
       t.integer :user_id
@@ -32,4 +32,6 @@ class TestMigration < ActiveRecord::Migration[5.0]
   end
 end
 
-TestMigration.up
+quietly do
+  TestMigration.up
+end
